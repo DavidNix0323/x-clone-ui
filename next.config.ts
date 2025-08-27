@@ -1,7 +1,6 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   images: {
     remotePatterns: [
       {
@@ -9,12 +8,23 @@ const nextConfig: NextConfig = {
         hostname: "ik.imagekit.io",
         port: "",
       },
+      {
+        protocol: "https",
+        hostname: "pbs.twimg.com",
+        port: "",
+      },
     ],
   },
   experimental: {
-    serverActions: {
-      bodySizeLimit: '50mb',
-    },
+   // serverActions: false, // ✅ Disable validator
+  },
+  async rewrites() {
+    return [
+      {
+        source: "/_next/:path*",
+        destination: "/_next/:path*",
+      },
+    ];
   },
 };
 

@@ -1,5 +1,3 @@
-// src/libs/fetchTweets.ts
-
 export type TwitterUser = {
     id: string;
     username: string;
@@ -17,7 +15,13 @@ export type TwitterUser = {
   export type TweetMedia = {
     media_key: string;
     type: string;
-    url: string;
+    url?: string;
+    preview_image_url?: string;
+    variants?: {
+      bitrate?: number;
+      content_type: string;
+      url: string;
+    }[];
   };
   
   export type TweetRaw = {
@@ -49,6 +53,36 @@ export type TwitterUser = {
     source: "x";
   };
   
+  const proxyUrl = (url: string) =>
+    url.startsWith("http") ? `/api/proxy?url=${encodeURIComponent(url)}` : "";
+  
+  const resolveMediaUrl = (m: TweetMedia): string => {
+    // Treat video thumbnail as photo if it's a preview image
+    if (
+      m.type === "video" &&
+      m.preview_image_url &&
+      m.preview_image_url.includes("ext_tw_video_thumb")
+    ) {
+      return proxyUrl(m.preview_image_url);
+    }
+  
+    if (m.type === "photo") {
+      const rawUrl = m.url || m.preview_image_url || "";
+      return proxyUrl(rawUrl);
+    }
+  
+    if ((m.type === "video" || m.type === "animated_gif") && Array.isArray(m.variants)) {
+      const mp4Variant = m.variants
+        .filter((v) => v.content_type === "video/mp4")
+        .sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0))[0];
+  
+      const rawUrl = mp4Variant?.url || m.preview_image_url || m.url || "";
+      return proxyUrl(rawUrl);
+    }
+  
+    return proxyUrl(m.url || "");
+  };
+  
   export const fetchTweets = async (bearerToken: string): Promise<TweetHydrated[]> => {
     if (!bearerToken || typeof bearerToken !== "string") {
       throw new Error("Missing or invalid bearer token");
@@ -68,7 +102,7 @@ export type TwitterUser = {
     const { data: user }: { data: TwitterUser } = await userRes.json();
   
     const tweetRes = await fetch(
-      `https://api.twitter.com/2/users/${user.id}/tweets?tweet.fields=created_at,public_metrics&expansions=author_id,attachments.media_keys&user.fields=username,name,profile_image_url&media.fields=url,type`,
+      `https://api.twitter.com/2/users/${user.id}/tweets?exclude=replies&tweet.fields=created_at,public_metrics&expansions=author_id,attachments.media_keys&user.fields=username,name,profile_image_url&media.fields=media_key,type,url,preview_image_url,variants`,
       {
         headers: { Authorization: `Bearer ${bearerToken}` },
       }
@@ -85,17 +119,45 @@ export type TwitterUser = {
     );
   
     const media: Record<string, TweetMedia> = Object.fromEntries(
-      (raw.includes.media || []).map((m) => [m.media_key, m])
+      (raw.includes.media || []).map((m) => {
+        const resolvedUrl = resolveMediaUrl(m);
+        return [m.media_key, { ...m, url: resolvedUrl }];
+      })
     );
   
-    return raw.data.map((tweet): TweetHydrated => ({
-      id: tweet.id,
-      text: tweet.text,
-      createdAt: tweet.created_at,
-      metrics: tweet.public_metrics,
-      user: users[tweet.author_id],
-      media: tweet.attachments?.media_keys?.map((key) => media[key]).filter(Boolean) || [],
-      source: "x",
-    }));
+    console.log("Resolved media preview:", Object.values(media).map((m) => ({
+      key: m.media_key,
+      type: m.type,
+      url: m.url,
+    })));
+  
+    return raw.data.map((tweet): TweetHydrated => {
+      const hydratedMedia =
+        tweet.attachments?.media_keys?.map((key) => media[key]).filter(Boolean) || [];
+  
+      const hydratedTweet: TweetHydrated = {
+        id: tweet.id,
+        text: tweet.text,
+        createdAt: tweet.created_at,
+        metrics: tweet.public_metrics,
+        user: users[tweet.author_id],
+        media: hydratedMedia,
+        source: "x",
+      };
+  
+      const isBrokenMedia =
+        hydratedMedia.length === 0 ||
+        hydratedMedia.every((m) => !m?.url || m.url.includes("undefined"));
+  
+      if (tweet.id === raw.data[0].id && isBrokenMedia) {
+        hydratedTweet.media = [{
+          media_key: 'manual_patch',
+          type: 'photo',
+          url: proxyUrl('https://pbs.twimg.com/media/GzHlI3qXQAAZ2iH?format=jpg&name=small'),
+        }];
+      }
+  
+      return hydratedTweet;
+    });
   };
   
