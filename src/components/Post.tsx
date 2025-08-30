@@ -1,6 +1,6 @@
 "use client";
 
-import TweetMedia from "./TweetMedia"; // hydration-safe media renderer
+import TweetMedia from "./TweetMedia";
 
 type MediaType = "photo" | "video" | "animated_gif";
 
@@ -66,7 +66,10 @@ const Post = ({ text, createdAt, user, media, metrics, type }: PostProps) => {
       )}
 
       {/* Media */}
-      {media && <TweetMedia media={media} useProxy={true} />}
+      {media && media.length > 0 && (
+  <TweetMedia media={media} />
+)}
+
 
       {/* Timestamp */}
       {createdAt && (
@@ -89,4 +92,3 @@ const Post = ({ text, createdAt, user, media, metrics, type }: PostProps) => {
 };
 
 export default Post;
-
