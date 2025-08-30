@@ -1,31 +1,15 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
+// next.config.js
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   images: {
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "ik.imagekit.io",
-        port: "",
-      },
-      {
-        protocol: "https",
-        hostname: "pbs.twimg.com",
-        port: "",
+        hostname: "pbs.twimg.com", // ✅ tweet & profile photos
       },
     ],
   },
-  experimental: {
-   // serverActions: false, // ✅ Disable validator
-  },
-  async rewrites() {
-    return [
-      {
-        source: "/_next/:path*",
-        destination: "/_next/:path*",
-      },
-    ];
-  },
 };
 
-export default nextConfig;
+module.exports = nextConfig;
+

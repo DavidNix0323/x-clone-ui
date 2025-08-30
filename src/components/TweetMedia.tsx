@@ -1,62 +1,42 @@
-"use client"
+"use client";
 
-import { useEffect, useState, memo } from "react"
-import Image from "next/image"
-import HotReloadWrapper from "@/client/dev/hot-reloader/HotReloadWrapper"
+import { useEffect, useState, memo } from "react";
+import HotReloadWrapper from "@/client/dev/hot-reloader/HotReloadWrapper";
 
-export type MediaType = "photo" | "video" | "animated_gif"
-
-export type MediaItem = {
-  media_key: string
-  type: MediaType
-  url: string
-  preview_image_url?: string
-}
+// Re-export types so other files can `import type { MediaItem, MediaType } from "./TweetMedia"`
+import type { TweetMedia } from "@/libs/fetchTweets";
+export type { TweetMedia as MediaItem } from "@/libs/fetchTweets";
+export type MediaType = TweetMedia["type"];
 
 type Props = {
-  media?: MediaItem[]
-  useProxy?: boolean
-}
+  media?: TweetMedia[];
+};
 
 const getMimeType = (url: string): string => {
-  if (url.endsWith(".webm")) return "video/webm"
-  if (url.endsWith(".mov")) return "video/quicktime"
-  return "video/mp4"
-}
+  if (url.endsWith(".webm")) return "video/webm";
+  if (url.endsWith(".mov")) return "video/quicktime";
+  return "video/mp4";
+};
 
-const getFallback = (type: MediaType): string =>
-  type === "photo" ? "/fallback.jpg" : "/fallback-video.jpg"
-
-const cleanUrl = (url?: string): string => (url ?? "").replace(/&amp;/g, "&")
+const getFallback = (type: string): string =>
+  type === "photo" ? "/fallback.jpg" : "/fallback-video.jpg";
 
 const gridClassMap: Record<number, string> = {
   1: "grid-cols-1",
   2: "grid-cols-2",
-  3: "grid-cols-3",
-}
+  3: "grid-cols-2", // fix: 3 photos still show in 2 cols like Twitter
+  4: "grid-cols-2",
+};
 
-// 🖼 Photo component (with stateful fallback)
-const PhotoMedia = ({
-  src,
-  fallback,
-  mediaKey,
-}: {
-  src: string
-  fallback: string
-  mediaKey: string
-}) => {
-  const [imgSrc, setImgSrc] = useState(src)
+// 🖼 Photo
+const PhotoMedia = ({ src, fallback }: { src: string; fallback: string }) => {
+  const [imgSrc, setImgSrc] = useState(src);
 
   return (
-    <div
-      key={mediaKey}
-      className="rounded-lg w-full max-h-[600px] overflow-hidden border border-red-500"
-    >
-      <Image
+    <div className="rounded-lg w-full max-h-[600px] overflow-hidden border border-red-500">
+      <img
         src={imgSrc}
-        alt="Tweet image"
-        width={800}
-        height={450}
+        alt={`Tweet image: ${src}`}
         className="rounded-lg w-full object-contain aspect-video"
         style={{
           minHeight: "250px",
@@ -65,30 +45,29 @@ const PhotoMedia = ({
           display: "block",
         }}
         onError={() => {
-          console.warn("❌ Image failed:", imgSrc)
-          setImgSrc(fallback)
+          console.warn("❌ Image failed:", imgSrc);
+          setImgSrc(fallback);
         }}
+        onLoad={() => console.info("✅ Loaded image:", src)}
       />
+      <div className="text-xs text-white bg-black/70 px-2 py-1 break-all">
+        {imgSrc}
+      </div>
     </div>
-  )
-}
+  );
+};
 
-// 🎥 Video component
+// 🎥 Video
 const VideoMedia = ({
   videoSrc,
   posterSrc,
   fallback,
-  mediaKey,
 }: {
-  videoSrc: string
-  posterSrc: string
-  fallback: string
-  mediaKey: string
+  videoSrc: string;
+  posterSrc: string;
+  fallback: string;
 }) => (
-  <div
-    key={mediaKey}
-    className="rounded-lg w-full max-h-[600px] overflow-hidden border border-blue-500"
-  >
+  <div className="rounded-lg w-full max-h-[600px] overflow-hidden border border-blue-500">
     <video
       controls
       playsInline
@@ -96,68 +75,57 @@ const VideoMedia = ({
       poster={posterSrc}
       className="rounded-lg w-full aspect-video object-cover"
       onError={(e) => {
-        console.warn("❌ Video failed to load:", videoSrc)
-        e.currentTarget.poster = fallback
+        console.warn("❌ Video failed to load:", videoSrc);
+        e.currentTarget.poster = fallback;
       }}
     >
       <source src={videoSrc} type={getMimeType(videoSrc)} />
       Your browser does not support the video tag.
     </video>
+    <div className="text-xs text-white bg-black/70 px-2 py-1 break-all">
+      {videoSrc}
+    </div>
   </div>
-)
+);
 
-const TweetMedia = memo(({ media = [], useProxy = false }: Props) => {
-  const [isHydrated, setIsHydrated] = useState(false)
+const TweetMedia = memo(({ media = [] }: Props) => {
+  const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
-    const timeout = setTimeout(() => setIsHydrated(true), 50)
-    return () => clearTimeout(timeout)
-  }, [])
+    const timeout = setTimeout(() => setIsHydrated(true), 50);
+    return () => clearTimeout(timeout);
+  }, []);
 
   if (!isHydrated || media.length === 0) {
-    console.warn("Hydration incomplete or media missing")
-    return <div style={{ minHeight: "250px", backgroundColor: "#111" }} />
+    return <div style={{ minHeight: "250px", backgroundColor: "#111" }} />;
   }
 
-  const gridCols = gridClassMap[media.length] ?? "grid-cols-2"
+  const gridCols = gridClassMap[media.length] ?? "grid-cols-2";
 
   return (
     <HotReloadWrapper>
       <div className={`mt-2 grid gap-2 ${gridCols}`}>
         {media.map((m) => {
-          const fallbackSrc = getFallback(m.type)
-          const rawUrl = cleanUrl(m.url ?? m.preview_image_url)
-
-          if (!rawUrl) {
-            console.warn("❌ No valid media URL for:", m.media_key)
-            return null
-          }
-
-          const resolvedSrc = useProxy
-            ? `/api/proxy?url=${encodeURIComponent(rawUrl)}`
-            : rawUrl
+          const fallbackSrc = getFallback(m.type);
 
           if (m.type === "photo") {
+            const resolvedSrc = m.url || fallbackSrc;
+            console.debug("[TweetMedia] Photo candidate", resolvedSrc);
+
             return (
               <PhotoMedia
                 key={m.media_key}
                 src={resolvedSrc}
                 fallback={fallbackSrc}
-                mediaKey={m.media_key}
               />
-            )
+            );
           }
 
           if (m.type === "video" || m.type === "animated_gif") {
-            const videoSrc = useProxy
-              ? `/api/proxy?url=${encodeURIComponent(cleanUrl(m.url))}`
-              : cleanUrl(m.url)
+            const videoSrc = m.url || fallbackSrc; // ✅ trust pre-resolved
+            const posterSrc = m.preview_image_url || fallbackSrc;
 
-            const posterSrc = useProxy
-              ? `/api/proxy?url=${encodeURIComponent(
-                  cleanUrl(m.preview_image_url) || fallbackSrc
-                )}`
-              : cleanUrl(m.preview_image_url) || fallbackSrc
+            console.debug("[TweetMedia] Video candidate", { videoSrc, posterSrc });
 
             return (
               <VideoMedia
@@ -165,19 +133,17 @@ const TweetMedia = memo(({ media = [], useProxy = false }: Props) => {
                 videoSrc={videoSrc}
                 posterSrc={posterSrc}
                 fallback={fallbackSrc}
-                mediaKey={m.media_key}
               />
-            )
+            );
           }
 
-          console.warn("Unsupported media type:", m.type)
-          return null
+          console.warn("Unsupported media type:", m.type);
+          return null;
         })}
       </div>
     </HotReloadWrapper>
-  )
-})
+  );
+});
 
-TweetMedia.displayName = "TweetMedia"
-export default TweetMedia
-
+TweetMedia.displayName = "TweetMedia";
+export default TweetMedia;
